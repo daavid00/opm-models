@@ -106,6 +106,10 @@ public:
 
         typename FluidSystem::template ParameterCache<Evaluation> paramCache;
         const auto& priVars = elemCtx.primaryVars(dofIdx, timeIdx);
+        unsigned globalSpaceIdx = elemCtx.globalSpaceIndex(dofIdx, timeIdx);
+        // wettability alteration
+        wa_ = elemCtx.simulator().wa(globalSpaceIdx);
+        fluidState_.setWa(wa_);
 
         // set the phase saturations
         Evaluation sumSat = 0;
@@ -218,6 +222,12 @@ public:
     { return porosity_; }
 
     /*!
+     * \brief ImmiscibleIntensiveQuantities::wettability
+     */
+    const Evaluation& wa() const
+    { return wa_; }
+
+    /*!
      * \brief IntensiveQuantities::checkDefined
      */
     void checkDefined() const
@@ -236,6 +246,7 @@ private:
     DimMatrix intrinsicPerm_;
     FluidState fluidState_;
     Evaluation porosity_;
+    Evaluation wa_;
     Evaluation relativePermeability_[numPhases];
     Evaluation mobility_[numPhases];
 };

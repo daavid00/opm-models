@@ -46,6 +46,7 @@
 #include <opm/models/io/vtkcompositionmodule.hh>
 #include <opm/models/io/vtkenergymodule.hh>
 #include <opm/models/io/vtkdiffusionmodule.hh>
+#include <opm/models/io/vtkwamodule.hh>
 
 #include <opm/material/common/Valgrind.hpp>
 #include <opm/material/common/Exceptions.hpp>
@@ -71,6 +72,7 @@ namespace TTag {
 struct NcpModel { using InheritsFrom = std::tuple<VtkDiffusion,
                                                   VtkEnergy,
                                                   VtkComposition,
+                                                  VtkWa,
                                                   MultiPhaseBaseModel>; };
 } // namespace TTag
 
@@ -269,6 +271,7 @@ public:
 
         // register runtime parameters of the VTK output modules
         Opm::VtkCompositionModule<TypeTag>::registerParameters();
+        Opm::VtkWaModule<TypeTag>::registerParameters();
 
         if (enableDiffusion)
             Opm::VtkDiffusionModule<TypeTag>::registerParameters();
@@ -468,6 +471,7 @@ public:
         ParentType::registerOutputModules_();
 
         this->addOutputModule(new Opm::VtkCompositionModule<TypeTag>(this->simulator_));
+        this->addOutputModule(new Opm::VtkWaModule<TypeTag>(this->simulator_));
         if (enableDiffusion)
             this->addOutputModule(new Opm::VtkDiffusionModule<TypeTag>(this->simulator_));
         if (enableEnergy)

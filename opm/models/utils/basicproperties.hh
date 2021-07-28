@@ -132,6 +132,33 @@ struct PrintParameters { using type = UndefinedProperty; };
 template<class TypeTag, class MyTypeTag>
 struct EndTime { using type = UndefinedProperty; };
 
+//! The default values for the simulation's wettability alteration
+template<class TypeTag, class MyTypeTag>
+struct EnableWa { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Tch { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Beta { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Eta { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Ci { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Cf { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Ei { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Ef { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Lambda { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Llambda { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Srw { using type = UndefinedProperty; };
+template<class TypeTag, class MyTypeTag>
+struct Srn { using type = UndefinedProperty; };
+
+
 //! The default value for the simulation's initial time step size
 template<class TypeTag, class MyTypeTag>
 struct InitialTimeStepSize { using type = UndefinedProperty; };
@@ -143,6 +170,10 @@ struct RestartTime { using type = UndefinedProperty; };
 //! The name of the file with a number of forced time step lengths
 template<class TypeTag, class MyTypeTag>
 struct PredeterminedTimeStepsFile { using type = UndefinedProperty; };
+
+//! The name of the file with a number of time step lengths to write vtk files
+template<class TypeTag, class MyTypeTag>
+struct WaVtkTimeStepsFile { using type = UndefinedProperty; };
 
 //! domain size
 template<class TypeTag, class MyTypeTag>
@@ -270,9 +301,81 @@ struct RestartTime<TypeTag, TTag::NumericModel>
     static constexpr type value = -1e35;
 };
 
+//! By default, wettability alteration is deactivated
+template<class TypeTag>
+struct EnableWa<TypeTag, TTag::NumericModel> { static constexpr bool value = false; };
+template<class TypeTag>
+struct Tch<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 1E7;
+};
+template<class TypeTag>
+struct Beta<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 1E16;
+};
+template<class TypeTag>
+struct Eta<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 0;
+};
+template<class TypeTag>
+struct Ci<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 1E4;
+};
+template<class TypeTag>
+struct Cf<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 1E2;
+};
+template<class TypeTag>
+struct Ei<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 0.48;
+};
+template<class TypeTag>
+struct Ef<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 3.37;
+};
+template<class TypeTag>
+struct Lambda<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 3.6;
+};
+template<class TypeTag>
+struct Llambda<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 1.3;
+};
+template<class TypeTag>
+struct Srw<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 0.2;
+};
+template<class TypeTag>
+struct Srn<TypeTag, TTag::NumericModel>
+{
+    using type = GetPropType<TypeTag, Scalar>;
+    static constexpr type value = 0.2;
+};
 //! By default, do not force any time steps
 template<class TypeTag>
 struct PredeterminedTimeStepsFile<TypeTag, TTag::NumericModel> { static constexpr auto value = ""; };
+//! By default, do not force any time steps
+template<class TypeTag>
+struct WaVtkTimeStepsFile<TypeTag, TTag::NumericModel> { static constexpr auto value = ""; };
 
 
 } // namespace Opm::Properties

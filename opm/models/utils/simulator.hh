@@ -94,6 +94,8 @@ class Simulator
     using GridView = GetPropType<TypeTag, Properties::GridView>;
     using Model = GetPropType<TypeTag, Properties::Model>;
     using Problem = GetPropType<TypeTag, Properties::Problem>;
+    using ElementContext = GetPropType<TypeTag, Properties::ElementContext>;
+    using Element = typename GridView::template Codim<0>::Entity;
 
 public:
     // do not allow to copy simulators around
@@ -109,6 +111,7 @@ public:
         verbose_ = verbose && comm.rank() == 0;
 
         timeStepIdx_ = 0;
+        timeVtkIdx_ = 0;
         startTime_ = 0.0;
         time_ = 0.0;
         endTime_ = EWOMS_GET_PARAM(TypeTag, Scalar, EndTime);
@@ -229,6 +232,9 @@ public:
 
         if (verbose_)
             std::cout << "Simulator successfully set up\n" << std::flush;
+
+        size_t numDof = this->model().numGridDof();
+        wa_.resize(numDof, 0.0);
     }
 
     /*!
@@ -245,6 +251,33 @@ public:
         EWOMS_REGISTER_PARAM(TypeTag, std::string, PredeterminedTimeStepsFile,
                              "A file with a list of predetermined time step sizes (one "
                              "time step per line)");
+        EWOMS_REGISTER_PARAM(TypeTag, std::string, WaVtkTimeStepsFile,
+                             "A file with a list of predetermined time step sizes (one "
+                             "time step per line) to print vtk files for the wa simulations");
+        EWOMS_REGISTER_PARAM(TypeTag, bool, EnableWa,
+                             "Activated/deactivated dynamic wettability alteration");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Beta,
+                             "The beta wettability alteration parameter");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Eta,
+                             "The eta wettability alteration parameter");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Ci,
+                             "The initial entry pressure of the caprock");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Cf,
+                             "The final entry pressure of the caprock");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Ei,
+                             "The relative permeability parameter Ei");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Ef,
+                             "The relative permeability parameter Ef");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Tch,
+                             "The caracteristic time Tch");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Lambda,
+                             "The capillary pressure parameter lambda");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Llambda,
+                             "The relative permeability parameter Lambda");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Srw,
+                             "The residual wetting saturation");
+        EWOMS_REGISTER_PARAM(TypeTag, Scalar, Srn,
+                             "The residual non-wetting saturation");
 
         Vanguard::registerParameters();
         Model::registerParameters();
@@ -581,6 +614,17 @@ public:
     }
 
     /*!
+     * \brief Returns the initial wettability alteration for a given a cell index
+     */
+    Scalar  wa(unsigned elemIdx) const
+    {
+        if (wa_.empty())
+            return 0;
+
+        return wa_[elemIdx];
+    }
+
+    /*!
      * \brief Returns true if the current episode will be finished
      *        after the current time step.
      */
@@ -624,6 +668,22 @@ public:
      */
     void run()
     {
+        // Check if wettability alteration is enabled
+        bool enablewa_ = EWOMS_GET_PARAM(TypeTag, bool, EnableWa);
+        // Get the characteristic time
+        Scalar tch_ = EWOMS_GET_PARAM(TypeTag, Scalar, Tch);
+        // Get the times to print the vtk files for the wa simulations
+        const std::string& waVtkTimeStepFile =
+            EWOMS_GET_PARAM(TypeTag, std::string, WaVtkTimeStepsFile);
+        if (!waVtkTimeStepFile.empty()) {
+            std::ifstream is(waVtkTimeStepFile);
+            while (!is.eof()) {
+                Scalar dt;
+                is >> dt;
+                waVtkTimeSteps_.push_back(dt);
+            }
+        }
+
         // create TimerGuard objects to hedge for exceptions
         TimerGuard setupTimerGuard(setupTimer_);
         TimerGuard executionTimerGuard(executionTimer_);
@@ -744,8 +804,17 @@ public:
 
             // write the result to disk
             writeTimer_.start();
-            if (problem_->shouldWriteOutput())
+            Scalar vtk;
+            vtk = waVtkTimeSteps_[timeVtkIdx_];
+            if (enablewa_){
+              if (vtk<this->time()){
                 EWOMS_CATCH_PARALLEL_EXCEPTIONS_FATAL(problem_->writeOutput());
+                ++timeVtkIdx_;}
+            }
+            else{
+              if (problem_->shouldWriteOutput())
+                EWOMS_CATCH_PARALLEL_EXCEPTIONS_FATAL(problem_->writeOutput());
+              }
             writeTimer_.stop();
 
             // do the next time integration
@@ -763,6 +832,24 @@ public:
             // advance the simulated time by the current time step size
             time_ += oldDt;
             ++timeStepIdx_;
+
+            //update wettability alteration variable
+            if (enablewa_){
+                ElementContext elemCtx(*this);
+                const auto& vanguard = this->vanguard();
+                auto elemIt = vanguard.gridView().template begin</*codim=*/0>();
+                const auto& elemEndIt = vanguard.gridView().template end</*codim=*/0>();
+                for (; elemIt != elemEndIt; ++elemIt) {
+                    const Element& elem = *elemIt;
+                    elemCtx.updatePrimaryStencil(elem);
+                    elemCtx.updatePrimaryIntensiveQuantities(/*timeIdx=*/0);
+                    unsigned compressedDofIdx = elemCtx.globalSpaceIndex(/*spaceIdx=*/0, /*timeIdx=*/0);
+                    const auto& iq = elemCtx.intensiveQuantities(/*spaceIdx=*/0, /*timeIdx=*/0);
+                    const auto& fs = iq.fluidState();
+                    Scalar Xo = Opm::decay<Scalar>(fs.massFraction(0,1));
+                    wa_[compressedDofIdx] += oldDt*Xo/tch_;
+                }
+            }
 
             prePostProcessTimer_.start();
             // notify the problem if an episode is finished
@@ -786,10 +873,13 @@ public:
 
             // write restart file if mandated by the problem
             writeTimer_.start();
-            if (problem_->shouldWriteRestartFile())
+            if (!enablewa_){
+              if (problem_->shouldWriteRestartFile())
                 EWOMS_CATCH_PARALLEL_EXCEPTIONS_FATAL(serialize());
-            writeTimer_.stop();
+                writeTimer_.stop();}
         }
+        if (enablewa_)
+            EWOMS_CATCH_PARALLEL_EXCEPTIONS_FATAL(problem_->writeOutput());
         executionTimer_.stop();
 
         EWOMS_CATCH_PARALLEL_EXCEPTIONS_FATAL(problem_->finalize());
@@ -961,12 +1051,17 @@ private:
     Opm::Timer writeTimer_;
 
     std::vector<Scalar> forcedTimeSteps_;
+
     Scalar startTime_;
     Scalar time_;
     Scalar endTime_;
 
+    std::vector<Scalar> wa_;
+    std::vector<Scalar> waVtkTimeSteps_;
+
     Scalar timeStepSize_;
     int timeStepIdx_;
+    int timeVtkIdx_;
 
     bool finished_;
     bool verbose_;

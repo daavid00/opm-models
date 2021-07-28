@@ -53,6 +53,7 @@
 #include <opm/models/io/vtkblackoilmodule.hh>
 #include "blackoildiffusionmodule.hh"
 #include <opm/models/io/vtkdiffusionmodule.hh>
+#include <opm/models/io/vtkwamodule.hh>
 
 #include <opm/material/fluidsystems/BlackOilFluidSystem.hpp>
 #include <opm/material/common/Unused.hpp>
@@ -78,6 +79,7 @@ struct BlackOilModel { using InheritsFrom = std::tuple<VtkComposition,
                                                        VtkBlackOilPolymer,
                                                        VtkBlackOilSolvent,
                                                        VtkBlackOil,
+                                                       VtkWa,
                                                        MultiPhaseBaseModel>; };
 } // namespace TTag
 
@@ -309,6 +311,7 @@ public:
         // register runtime parameters of the VTK output modules
         Opm::VtkBlackOilModule<TypeTag>::registerParameters();
         Opm::VtkCompositionModule<TypeTag>::registerParameters();
+        Opm::VtkWaModule<TypeTag>::registerParameters();
 
         if (enableDiffusion)
             Opm::VtkDiffusionModule<TypeTag>::registerParameters();
@@ -598,6 +601,7 @@ protected:
 
         this->addOutputModule(new Opm::VtkBlackOilModule<TypeTag>(this->simulator_));
         this->addOutputModule(new Opm::VtkCompositionModule<TypeTag>(this->simulator_));
+        this->addOutputModule(new Opm::VtkWaModule<TypeTag>(this->simulator_));
 
         if (enableDiffusion)
             this->addOutputModule(new Opm::VtkDiffusionModule<TypeTag>(this->simulator_));

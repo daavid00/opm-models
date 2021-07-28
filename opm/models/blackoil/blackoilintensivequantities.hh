@@ -100,6 +100,8 @@ class BlackOilIntensiveQuantities
     static const bool waterEnabled = Indices::waterEnabled;
 
     using Toolbox = Opm::MathToolbox<Evaluation>;
+    using CoordScalar = typename GridView::ctype;
+    using GlobalPosition = Dune::FieldVector<CoordScalar, dimWorld>;
     using DimMatrix = Dune::FieldMatrix<Scalar, dimWorld, dimWorld>;
     using FluxIntensiveQuantities = typename FluxModule::FluxIntensiveQuantities;
     using FluidState = Opm::BlackOilFluidState<Evaluation, FluidSystem, enableTemperature, enableEnergy, compositionSwitchEnabled,  enableBrine, Indices::numPhases >;
@@ -188,9 +190,56 @@ public:
 
         asImp_().solventPreSatFuncUpdate_(elemCtx, dofIdx, timeIdx);
 
+        bool enablewa_ = EWOMS_GET_PARAM(TypeTag, bool, EnableWa);
+        wa_ = problem.wa(globalSpaceIdx);
+        Scalar beta = EWOMS_GET_PARAM(TypeTag, Scalar, Beta);
+        Scalar eta = EWOMS_GET_PARAM(TypeTag, Scalar, Eta);
+        Scalar ci = EWOMS_GET_PARAM(TypeTag, Scalar, Ci);
+        Scalar cf = EWOMS_GET_PARAM(TypeTag, Scalar, Cf);
+        Scalar Ei =EWOMS_GET_PARAM(TypeTag, Scalar, Ei);
+        Scalar Ef = EWOMS_GET_PARAM(TypeTag, Scalar, Ef);
+        Scalar tch = EWOMS_GET_PARAM(TypeTag, Scalar, Tch);
+        Scalar lambda = EWOMS_GET_PARAM(TypeTag, Scalar, Lambda);
+        Scalar llambda = EWOMS_GET_PARAM(TypeTag, Scalar, Llambda);
+        Scalar srw = EWOMS_GET_PARAM(TypeTag, Scalar, Srw);
+        Scalar Sthres = 0.01;
+        Evaluation Swe = (Sw-srw)/(1.0-srw);
+
+        const auto& materialParams = problem.materialLawParams(elemCtx, dofIdx, timeIdx);
+        // If wettability alteration is enabled, then we compute the capillary pressure explicitly
+        if(enablewa_){
+          const Evaluation& po = priVars.makeEvaluation(Indices::pressureSwitchIdx, timeIdx);
+          if (FluidSystem::phaseIsActive(oilPhaseIdx))
+              fluidState_.setPressure(oilPhaseIdx, po);
+          if (FluidSystem::phaseIsActive(waterPhaseIdx)){
+              if (Swe <= Sthres) {
+                const Scalar eps = 1e-7;
+                Scalar delta = 0.0;
+                Evaluation pcnw_SwLow = (1.0+(cf/ci-1.0)*Sthres*wa_/(Sthres*wa_+beta))*ci*Opm::pow(Sthres, -1.0/lambda);
+                Evaluation pc2 = (1.0+(cf/ci-1.0)*(Sthres + eps)*wa_/((Sthres + eps)*wa_+beta))*ci*Opm::pow(Sthres + eps, -1.0/lambda);
+                delta += eps;
+                Evaluation pc1 = (1.0+(cf/ci-1.0)*(Sthres - eps)*wa_/((Sthres - eps)*wa_+beta))*ci*Opm::pow((Sthres - eps), -1.0/lambda);
+                delta += eps;
+                Evaluation m = (pc2 - pc1)/delta;
+                fluidState_.setPressure(waterPhaseIdx, po - (pcnw_SwLow + m*(Swe - Sthres)));
+              }
+              else if (Swe >= 1.0) {
+                const Scalar eps = 1e-7;
+                Scalar delta = 0.0;
+                Evaluation pcnw_SwHigh = (1.0+(cf/ci-1.0)*wa_/(wa_+beta))*ci*Opm::pow(1.0, -1.0/lambda);
+                Evaluation pc2 = (1.0+(cf/ci-1.0)*wa_/(wa_+beta))*ci*Opm::pow(1.0, -1.0/lambda);
+                Evaluation pc1 = (1.0+(cf/ci-1.0)*(1.0-eps)*wa_/((1.0-eps)*wa_+beta))*ci*Opm::pow(1.0-eps, -1.0/lambda);
+                delta += eps;
+                Evaluation m = (pc2 - pc1)/delta;
+                fluidState_.setPressure(waterPhaseIdx, po - (pcnw_SwHigh + m*(Swe - 1.0)));
+              }
+              else
+                fluidState_.setPressure(waterPhaseIdx, po - (1.0+(cf/ci-1.0)*Swe*wa_/(Swe*wa_+beta))*ci*Opm::pow(Swe, -1.0/lambda));
+          }
+        }
+        else{
         // now we compute all phase pressures
         Evaluation pC[numPhases];
-        const auto& materialParams = problem.materialLawParams(elemCtx, dofIdx, timeIdx);
         MaterialLaw::capillaryPressures(pC, materialParams, fluidState_);
 
         //oil is the reference phase for pressure
@@ -207,10 +256,34 @@ public:
                 if (FluidSystem::phaseIsActive(phaseIdx))
                     fluidState_.setPressure(phaseIdx, po + (pC[phaseIdx] - pC[oilPhaseIdx]));
         }
+        }
 
         // calculate relative permeabilities. note that we store the result into the
-        // mobility_ class attribute. the division by the phase viscosity happens later.
+        // mobility_ class attribute. The division by the phase viscosity happens later.
         MaterialLaw::relativePermeabilities(mobility_, materialParams, fluidState_);
+        // If wettability alteration is enabled, then we compute the relative permeabilities explicitly
+        if(enablewa_){
+          for (unsigned phaseIdx = 0; phaseIdx < numPhases; ++phaseIdx) {
+              if (!FluidSystem::phaseIsActive(phaseIdx))
+                  continue;
+          if (phaseIdx == waterPhaseIdx){
+            if (Swe <= 0.0)
+              mobility_[phaseIdx] = 0;
+            else if (Swe >= 1.0)
+              mobility_[phaseIdx] = 1.0;
+            else
+              mobility_[phaseIdx] = (Opm::min(Ef,eta*wa_+Ei))*pow(Swe,llambda)/(1-Swe+(Opm::min(Ef,eta*wa_+Ei))*pow(Swe,llambda));
+          }
+          else{
+           if (Swe <= 0.0)
+              mobility_[phaseIdx] = 1.0;
+            else if (Swe >= 1.0)
+              mobility_[phaseIdx] = 0;
+            else
+              mobility_[phaseIdx] = (1.0-Swe)/(1-Swe+(Opm::min(Ef,eta*wa_+Ei))*pow(Swe,llambda));
+          }
+        }
+      }
         Opm::Valgrind::CheckDefined(mobility_);
 
         // update the Saturation functions for the blackoil solvent module.
@@ -315,6 +388,7 @@ public:
             fluidState_.setInvB(phaseIdx, b);
 
             const auto& mu = FluidSystem::viscosity(fluidState_, paramCache, phaseIdx);
+
             if (enableExtbo && phaseIdx == oilPhaseIdx)
               mobility_[phaseIdx] /= asImp_().oilViscosity();
             else if (enableExtbo && phaseIdx == gasPhaseIdx)
@@ -428,6 +502,12 @@ public:
     { return porosity_; }
 
     /*!
+     * \brief ImmiscibleIntensiveQuantities::wettability
+     */
+    const Evaluation& wa() const
+    { return wa_; }
+
+    /*!
      * \brief Returns the index of the PVT region used to calculate the thermodynamic
      *        quantities.
      *
@@ -477,6 +557,7 @@ private:
     FluidState fluidState_;
     Scalar referencePorosity_;
     Evaluation porosity_;
+    Evaluation wa_;
     Evaluation mobility_[numPhases];
 };
 

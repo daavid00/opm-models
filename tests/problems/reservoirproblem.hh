@@ -629,6 +629,14 @@ public:
 
     //! \}
 
+    /*!
+     * \brief Wettability alteration is implemented in Flow (opm-simulators)
+     */
+    Scalar  wa(unsigned elemIdx) const
+    {
+            return 0;
+    }
+
 private:
     void initFluidState_()
     {
