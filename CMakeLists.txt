@@ -219,7 +219,8 @@ foreach(tapp co2injection_flash_ni_vcfv
              diffusion_ncp
              diffusion_pvs
              groundwater_immiscible
-             wa)
+             wa
+             get2021)
   opm_add_test(${tapp})
 endforeach()
 
