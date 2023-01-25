@@ -140,6 +140,9 @@ public:
             // phase not present, skip
             if(bSAvg < 1.0e-6)
                 continue;
+
+            // the convFactor converts from concentration mol/m3 to mass fraction kg/kg. 
+            // rho / Mi where rho is the mixture density and Mi the molar mass of component i 
             Evaluation convFactor = 1.0;
             Evaluation diffR = 0.0;
             if (FluidSystem::enableDissolvedGas() && FluidSystem::phaseIsActive(FluidSystem::gasPhaseIdx) && phaseIdx == FluidSystem::oilPhaseIdx) {
@@ -471,6 +474,19 @@ protected:
 
         const auto& stencil = elemCtx.stencil(timeIdx);
         const auto& face = stencil.interiorFace(faceIdx);
+        const auto& problem = elemCtx.problem();
+        
+        auto faceIdx2 = faceIdx;
+        for (int idx = 0; idx < stencil.numInteriorFaces(); ++idx) {
+            const auto& face_this = stencil.interiorFace(idx);
+            if(face.dirId() < 5 && face_this.dirId() >= 5) {
+                faceIdx2 = idx;
+            }
+            if(face.dirId() >= 5 && face_this.dirId() < 5) {
+                faceIdx2 = idx;
+            }
+        }
+
         const auto& extQuants = elemCtx.extensiveQuantities(faceIdx, timeIdx);
         const auto& intQuantsInside = elemCtx.intensiveQuantities(extQuants.interiorIndex(), timeIdx);
         const auto& intQuantsOutside = elemCtx.intensiveQuantities(extQuants.exteriorIndex(), timeIdx);
@@ -480,6 +496,8 @@ protected:
         diffusivity_ = diffusivity / faceArea; //opm-models expects pr area flux
         Valgrind::CheckDefined(diffusivity_);
 
+        unsigned globalSpaceIdxInside = elemCtx.globalSpaceIndex(extQuants.interiorIndex(), timeIdx);
+        unsigned globalSpaceIdxOutside = elemCtx.globalSpaceIndex(extQuants.exteriorIndex(), timeIdx);
 
         for (unsigned phaseIdx = 0; phaseIdx < numPhases; ++phaseIdx) {
             if (!FluidSystem::phaseIsActive(phaseIdx)) {
@@ -489,14 +507,35 @@ protected:
             if (!FluidSystem::enableDissolvedGasInWater() && FluidSystem::waterPhaseIdx == phaseIdx) {
                 continue;
             }
+
+            const int current_idx = face.dirId()/2;
+            Scalar uT = 0.0;
+            Scalar u = 0.0;
+            for (int idx = 0; idx < 3; ++idx) {
+                if (idx == current_idx) {
+                    u += problem.cellPhaseFlux(globalSpaceIdxInside, face.dirId()/2, phaseIdx)/2;
+                    u += problem.cellPhaseFlux(globalSpaceIdxOutside, face.dirId()/2, phaseIdx)/2;
+                    continue;
+                }
+                uT += problem.cellPhaseFlux(globalSpaceIdxInside, idx, phaseIdx)/4;
+                uT += problem.cellPhaseFlux(globalSpaceIdxOutside, idx, phaseIdx)/4;
+            }
+
+            unsigned pvtRegionIndex = intQuantsInside.pvtRegionIndex(); // pick from inside cell
+            
+            Scalar alphaT = FluidSystem::dispersionCoefficientTrans(pvtRegionIndex); // 1e-2m
+            Scalar alpha = FluidSystem::dispersionCoefficientAlong(pvtRegionIndex); //alphaT/100; //m
+            Scalar dispertion = alphaT * uT + alpha * u; 
+            //std::cout << dispertion << " " << alphaT << " " << alpha <<std::endl;
+
             for (unsigned compIdx = 0; compIdx < numComponents; ++compIdx) {
                 // use the arithmetic average for the effective
                 // diffusion coefficients.
-                effectiveDiffusionCoefficient_[phaseIdx][compIdx] =
-                    (intQuantsInside.effectiveDiffusionCoefficient(phaseIdx, compIdx)
+                effectiveDiffusionCoefficient_[phaseIdx][compIdx] = 
+                    ((intQuantsInside.effectiveDiffusionCoefficient(phaseIdx, compIdx)
                      +
                      intQuantsOutside.effectiveDiffusionCoefficient(phaseIdx, compIdx))
-                    / 2;
+                    / 2) + dispertion;
 
                 Valgrind::CheckDefined(effectiveDiffusionCoefficient_[phaseIdx][compIdx]);
             }
