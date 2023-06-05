@@ -35,6 +35,7 @@
 #include <opm/models/utils/signum.hh>
 #include <opm/models/nonlinear/newtonmethod.hh>
 #include "blackoilmicpmodules.hh"
+#include "blackoilmicrobesmodule.hh"
 
 namespace Opm::Properties {
 
@@ -148,6 +149,7 @@ class BlackOilNewtonMethod : public GetPropType<TypeTag, Properties::DiscNewtonM
     using Scalar = GetPropType<TypeTag, Properties::Scalar>;
     using Linearizer = GetPropType<TypeTag, Properties::Linearizer>;
     using MICPModule = BlackOilMICPModule<TypeTag>;
+    using MicrobesModule = BlackOilMicrobesModule<TypeTag>;
 
     static const unsigned numEq = getPropValue<TypeTag, Properties::NumEq>();
     static constexpr bool enableSaltPrecipitation = getPropValue<TypeTag, Properties::EnableSaltPrecipitation>();
@@ -320,6 +322,7 @@ protected:
         static constexpr bool enableFoam = Indices::foamConcentrationIdx >= 0;
         static constexpr bool enableBrine = Indices::saltConcentrationIdx >= 0;
         static constexpr bool enableMICP = Indices::microbialConcentrationIdx >= 0;
+        static constexpr bool enableMicrobes = Indices::bacteriaConcentrationIdx >= 0;
 
         currentValue.checkDefined();
         Valgrind::CheckDefined(update);
@@ -490,6 +493,10 @@ protected:
                 nextValue[pvIdx] = std::clamp(nextValue[pvIdx], 0.0, MICPModule::phi()[globalDofIdx] - MICPModule::toleranceBeforeClogging());
             if (enableMICP && pvIdx == Indices::calciteConcentrationIdx)
                 nextValue[pvIdx] = std::clamp(nextValue[pvIdx], 0.0, MICPModule::phi()[globalDofIdx] - MICPModule::toleranceBeforeClogging());
+
+            // keep the microbes concentration above 0
+            if (enableMicrobes && pvIdx == Indices::bacteriaConcentrationIdx)
+                nextValue[pvIdx] = std::min(nextValue[pvIdx], 1.0-1.e-8);
         }
 
         // switch the new primary variables to something which is physically meaningful.

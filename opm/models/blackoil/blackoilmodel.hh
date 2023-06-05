@@ -48,6 +48,7 @@
 #include "blackoilextbomodules.hh"
 #include "blackoildarcyfluxmodule.hh"
 #include "blackoilmicpmodules.hh"
+#include "blackoilmicrobesmodule.hh"
 
 #include <opm/models/common/multiphasebasemodel.hh>
 #include <opm/models/io/vtkcompositionmodule.hh>
@@ -80,7 +81,8 @@ struct BlackOilModel { using InheritsFrom = std::tuple<VtkComposition,
                                                        VtkBlackOilSolvent,
                                                        VtkBlackOil,
                                                        MultiPhaseBaseModel,
-                                                       VtkBlackOilMICP>; };
+                                                       VtkBlackOilMICP,
+                                                       VtkBlackOilMicrobes>; };
 } // namespace TTag
 
 //! Set the local residual function
@@ -134,7 +136,8 @@ struct Indices<TypeTag, TTag::BlackOilModel>
                                getPropValue<TypeTag, Properties::EnableFoam>(),
                                getPropValue<TypeTag, Properties::EnableBrine>(),
                                /*PVOffset=*/0,
-                               getPropValue<TypeTag, Properties::EnableMICP>()>; };
+                               getPropValue<TypeTag, Properties::EnableMICP>(),
+                               getPropValue<TypeTag, Properties::EnableMicrobes>()>; };
 
 //! Set the fluid system to the black-oil fluid system by default
 template<class TypeTag>
@@ -167,6 +170,8 @@ template<class TypeTag>
 struct EnableSaltPrecipitation<TypeTag, TTag::BlackOilModel> { static constexpr bool value = false; };
 template<class TypeTag>
 struct EnableMICP<TypeTag, TTag::BlackOilModel> { static constexpr bool value = false; };
+template<class TypeTag>
+struct EnableMicrobes<TypeTag, TTag::BlackOilModel> { static constexpr bool value = false; };
 
 //! By default, the blackoil model is isothermal and does not conserve energy
 template<class TypeTag>
@@ -305,6 +310,7 @@ private:
     using DiffusionModule = BlackOilDiffusionModule<TypeTag, enableDiffusion>;
     using DispersionModule = BlackOilDispersionModule<TypeTag, enableDispersion>;
     using MICPModule = BlackOilMICPModule<TypeTag>;
+    using MicrobesModule = BlackOilMicrobesModule<TypeTag>;
 
 public:
 
@@ -329,6 +335,7 @@ public:
         EnergyModule::registerParameters();
         DiffusionModule::registerParameters();
         MICPModule::registerParameters();
+        MicrobesModule::registerParameters();
 
         // register runtime parameters of the VTK output modules
         VtkBlackOilModule<TypeTag>::registerParameters();
@@ -600,6 +607,7 @@ protected:
         PolymerModule::registerOutputModules(asImp_(), this->simulator_);
         EnergyModule::registerOutputModules(asImp_(), this->simulator_);
         MICPModule::registerOutputModules(asImp_(), this->simulator_);
+        MicrobesModule::registerOutputModules(asImp_(), this->simulator_);
 
         this->addOutputModule(new VtkBlackOilModule<TypeTag>(this->simulator_));
         this->addOutputModule(new VtkCompositionModule<TypeTag>(this->simulator_));
