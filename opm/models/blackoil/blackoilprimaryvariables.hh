@@ -32,6 +32,7 @@
 #include "blackoilfoammodules.hh"
 #include "blackoilbrinemodules.hh"
 #include "blackoilmicpmodules.hh"
+#include "blackoilmicrobesmodule.hh"
 
 #include <opm/models/discretization/common/fvbaseprimaryvariables.hh>
 
@@ -117,6 +118,7 @@ class BlackOilPrimaryVariables : public FvBasePrimaryVariables<TypeTag>
     enum { enableEnergy = getPropValue<TypeTag, Properties::EnableEnergy>() };
     enum { enableTemperature = getPropValue<TypeTag, Properties::EnableTemperature>() };
     enum { enableMICP = getPropValue<TypeTag, Properties::EnableMICP>() };
+    enum { enableMicrobes = getPropValue<TypeTag, Properties::EnableMicrobes>() };
     enum { gasCompIdx = FluidSystem::gasCompIdx };
     enum { waterCompIdx = FluidSystem::waterCompIdx };
     enum { oilCompIdx = FluidSystem::oilCompIdx };
@@ -130,6 +132,7 @@ class BlackOilPrimaryVariables : public FvBasePrimaryVariables<TypeTag>
     using FoamModule = BlackOilFoamModule<TypeTag, enableFoam>;
     using BrineModule = BlackOilBrineModule<TypeTag, enableBrine>;
     using MICPModule = BlackOilMICPModule<TypeTag, enableMICP>;
+    using MicrobesModule = BlackOilMicrobesModule<TypeTag, enableMicrobes>;
 
     static_assert(numPhases == 3, "The black-oil model assumes three phases!");
     static_assert(numComponents == 3, "The black-oil model assumes three components!");
@@ -677,6 +680,17 @@ public:
             pcFactor_ = 1.0;
         }
 
+        if (MicrobesModule::hasPefactTables()) {
+            unsigned satnumRegionIdx = problem.satnumRegionIndex(globalDofIdx);
+            Scalar Ss = bacteriaConcentration_();
+            Scalar porosityFactor  = min(1.0 - Ss, 1.0); //phi/phi_0
+            const auto& pefactTable = MicrobesModule::pefactTable(satnumRegionIdx);
+            pcFactor_ = pefactTable.eval(porosityFactor, /*extrapolation=*/true);
+        }
+        else {
+            pcFactor_ = 1.0;
+        }
+
         switch(primaryVarsMeaningWater()) {
             case WaterMeaning::Sw:
             {
@@ -1107,6 +1121,14 @@ private:
     {
         if constexpr (enableMICP)
             return (*this)[Indices::calciteConcentrationIdx];
+        else
+            return 0.0;
+    }
+
+    Scalar bacteriaConcentration_() const
+    {
+        if constexpr (enableMicrobes)
+            return (*this)[Indices::bacteriaConcentrationIdx];
         else
             return 0.0;
     }

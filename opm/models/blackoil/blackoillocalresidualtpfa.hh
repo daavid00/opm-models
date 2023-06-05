@@ -38,6 +38,7 @@
 #include "blackoildiffusionmodule.hh"
 #include "blackoildispersionmodule.hh"
 #include "blackoilmicpmodules.hh"
+#include "blackoilmicrobesmodule.hh"
 #include <opm/material/fluidstates/BlackOilFluidState.hpp>
 #include <opm/input/eclipse/EclipseState/Grid/FaceDir.hpp>
 #include <opm/input/eclipse/Schedule/BCProp.hpp>
@@ -95,6 +96,7 @@ class BlackOilLocalResidualTPFA : public GetPropType<TypeTag, Properties::DiscLo
     static constexpr bool enableDiffusion = getPropValue<TypeTag, Properties::EnableDiffusion>();
     static constexpr bool enableDispersion = getPropValue<TypeTag, Properties::EnableDispersion>();
     static constexpr bool enableMICP = getPropValue<TypeTag, Properties::EnableMICP>();
+    static constexpr bool enableMicrobes = getPropValue<TypeTag, Properties::EnableMicrobes>();
 
     using SolventModule = BlackOilSolventModule<TypeTag>;
     using ExtboModule = BlackOilExtboModule<TypeTag>;
@@ -105,6 +107,7 @@ class BlackOilLocalResidualTPFA : public GetPropType<TypeTag, Properties::DiscLo
     using DiffusionModule = BlackOilDiffusionModule<TypeTag, enableDiffusion>;
     using DispersionModule = BlackOilDispersionModule<TypeTag, enableDispersion>;
     using MICPModule = BlackOilMICPModule<TypeTag>;
+    using MicrobesModule = BlackOilMicrobesModule<TypeTag>;
 
     using Toolbox = MathToolbox<Evaluation>;
 
@@ -214,6 +217,9 @@ public:
 
         // deal with micp (if present)
         MICPModule::addStorage(storage, intQuants);
+
+        // deal with microbes (if present)
+        MicrobesModule::addStorage(storage, intQuants);
     }
 
     /*!
@@ -472,6 +478,10 @@ public:
         // deal with micp (if present)
         static_assert(!enableMICP, "Relevant computeFlux() method must be implemented for this module before enabling.");
         // MICPModule::computeFlux(flux, elemCtx, scvfIdx, timeIdx);
+        
+        // deal with microbes (if present)
+        static_assert(!enableMicrobes, "Relevant computeFlux() method must be implemented for this module before enabling.");
+        // MicrobesModule::computeFlux(flux, elemCtx, scvfIdx, timeIdx);
 
     }
 
@@ -600,6 +610,7 @@ public:
         static_assert(!enableSolvent, "Relevant treatment of boundary conditions must be implemented before enabling.");
         static_assert(!enablePolymer, "Relevant treatment of boundary conditions must be implemented before enabling.");
         static_assert(!enableMICP, "Relevant treatment of boundary conditions must be implemented before enabling.");
+        static_assert(!enableMicrobes, "Relevant treatment of boundary conditions must be implemented before enabling.");
 
         // make sure that the right mass conservation quantities are used
         adaptMassConservationQuantities_(bdyFlux, insideIntQuants.pvtRegionIndex());
@@ -660,6 +671,10 @@ public:
         // deal with micp (if present)
         static_assert(!enableMICP, "Relevant addSource() method must be implemented for this module before enabling.");
         // MICPModule::addSource(source, elemCtx, dofIdx, timeIdx);
+        
+        // deal with microbes (if present)
+        static_assert(!enableMicrobes, "Relevant addSource() method must be implemented for this module before enabling.");
+        // MicrobesModule::addSource(source, elemCtx, dofIdx, timeIdx);
 
         // scale the source term of the energy equation
         if (enableEnergy)
@@ -698,6 +713,9 @@ public:
 
         // deal with MICP (if present)
         MICPModule::addSource(source, elemCtx, dofIdx, timeIdx);
+
+        // deal with microbes (if present)
+        MicrobesModule::addSource(source, elemCtx, dofIdx, timeIdx);
 
         // scale the source term of the energy equation
         if constexpr(enableEnergy)

@@ -88,6 +88,8 @@ list (APPEND PUBLIC_HEADER_FILES
              opm/models/blackoil/blackoiltwophaseindices.hh
              opm/models/blackoil/blackoilmicpmodules.hh
              opm/models/blackoil/blackoilmicpparams.hh
+             opm/models/blackoil/blackoilmicrobesmodule.hh
+             opm/models/blackoil/blackoilmicrobesparams.hh
              opm/models/blackoil/blackoilpolymermodules.hh
              opm/models/blackoil/blackoilpolymerparams.hh
              opm/models/blackoil/blackoilboundaryratevector.hh
@@ -190,6 +192,7 @@ list (APPEND PUBLIC_HEADER_FILES
              opm/models/io/baseoutputmodule.hh
              opm/models/io/vtkblackoilpolymermodule.hh
              opm/models/io/vtkblackoilmicpmodule.hh
+             opm/models/io/vtkblackoilmicrobesmodule.hh
              opm/models/ncp/ncpmodel.hh
              opm/models/ncp/ncpindices.hh
              opm/models/ncp/ncpextensivequantities.hh
